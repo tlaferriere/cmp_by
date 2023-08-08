@@ -1,14 +1,14 @@
-use proc_macro2::Span;
-use quote::ToTokens;
+use proc_macro2::{Span, TokenStream};
+use quote::{quote, ToTokens};
 use syn::{
     parse2, parse_quote, punctuated::Punctuated, spanned::Spanned, ConstParam, Data, DataEnum,
     DataStruct, DeriveInput, Error, Expr, Fields, FieldsNamed, FieldsUnnamed, GenericArgument,
-    GenericParam, Generics, Index, LifetimeParam, Pat, Token, TypeParam,
+    GenericParam, Generics, Index, LifetimeParam, Token, TypeParam,
 };
 
 pub enum ParsedFields {
     Struct(Vec<Expr>),
-    Enum(Vec<(Pat, Vec<Expr>)>),
+    Enum(Vec<(TokenStream, Vec<Expr>)>),
 }
 
 pub struct ParsedInput {
@@ -19,7 +19,7 @@ pub struct ParsedInput {
 }
 
 pub(crate) fn parse_input(input: DeriveInput, attr: &str) -> Result<ParsedInput, ParsingError> {
-    println!("Entered parse_input()");
+    // println!("Entered parse_input()");
     let expressions = input
         .attrs
         .iter()
@@ -51,29 +51,41 @@ pub(crate) fn parse_input(input: DeriveInput, attr: &str) -> Result<ParsedInput,
             (Ok(_), Err(err)) | (Err(err), Ok(_)) => Err(err),
         }
     })?;
-    println!("Successfully parsed expressions");
+    // println!("Successfully parsed expressions");
 
     let fields = match input.data {
         Data::Struct(DataStruct {
             fields: fields @ (Fields::Unnamed(..) | Fields::Named(..)),
             ..
         }) => {
-            println!("Parsing struct fields");
-            ParsedFields::Struct(parse_fields(fields, attr)?)
+            // println!("Parsing struct fields");
+            ParsedFields::Struct(parse_fields(&fields, attr)?)
         }
         Data::Enum(DataEnum { variants, .. }) => {
-            println!("Parsing enum fields");
+            // println!("Parsing enum fields");
             ParsedFields::Enum(
                 variants
                     .into_iter()
-                    .filter_map(|variant| -> Option<Result<_, ParsingError>> {
-                        let ident = variant.ident;
-                        let result = match parse_fields(variant.fields, attr) {
+                    .map(|variant| -> Result<_, ParsingError> {
+                        let result = match parse_fields(&variant.fields, attr) {
                             Ok(f) => f,
-                            Err(ParsingError::NoField(_)) => return None, // TODO: Figure out what to do with enum variants with no fields selected
-                            Err(e) => return Some(Err(e)),
+                            Err(ParsingError::NoField(_)) => Vec::new(),
+                            Err(e) => return Err(e),
                         };
-                        Some(Ok((parse_quote!(#ident), result)))
+                        let field_pat = match variant.fields {
+                            Fields::Named(_) => {
+                                quote!({ .. })
+                            }
+                            Fields::Unnamed(_) => {
+                                quote!((..))
+                            }
+                            Fields::Unit => {
+                                quote!()
+                            }
+                        };
+
+                        let ident = variant.ident;
+                        Ok((quote!(Self::#ident #field_pat), result))
                     })
                     .fold(Ok(vec![]), fold_token_errors)?,
             )
@@ -85,7 +97,7 @@ pub(crate) fn parse_input(input: DeriveInput, attr: &str) -> Result<ParsedInput,
             )));
         }
     };
-    println!("Successfully parsed fields");
+    // println!("Successfully parsed fields");
     let generic_arguments = input
         .generics
         .params
@@ -161,8 +173,8 @@ impl From<Error> for ParsingError {
     }
 }
 
-fn parse_fields(fields: Fields, attr: &str) -> Result<Vec<Expr>, ParsingError> {
-    println!("Entered parse_fields");
+fn parse_fields(fields: &Fields, attr: &str) -> Result<Vec<Expr>, ParsingError> {
+    // println!("Entered parse_fields");
     match fields {
         Fields::Named(FieldsNamed { named: fields, .. })
         | Fields::Unnamed(FieldsUnnamed {
@@ -178,20 +190,24 @@ fn parse_fields(fields: Fields, attr: &str) -> Result<Vec<Expr>, ParsingError> {
                         .attrs
                         .iter()
                         .filter(|i| i.path().get_ident().map_or(false, |i| i == attr));
-                    attrs.next().map(|_| -> Result<Expr, ParsingError> {
-                        if attrs.next().is_some() {
-                            return Err(ParsingError::Error(Error::new(
-                                span,
-                                format!(r#"expected at most one `{attr}` attribute"#),
-                            )));
-                        }
+                    attrs.next()?;
+                    if attrs.next().is_some() {
+                        return Some(Err(ParsingError::Error(Error::new(
+                            span,
+                            format!(r#"expected at most one `{attr}` attribute"#),
+                        ))));
+                    }
+                    // println!("Attempting to generate field exprs");
+                    Some(
                         parse2(if let Some(ident) = &field.ident {
+                            // println!("Generating named field");
                             ident.to_token_stream()
                         } else {
+                            // println!("Generating unnamed field");
                             Index::from(i).to_token_stream()
                         })
-                        .map_err(ParsingError::Error)
-                    })
+                        .map_err(ParsingError::Error),
+                    )
                 })
                 .peekable();
             if cmp_fields.peek().is_none() {
@@ -199,6 +215,9 @@ fn parse_fields(fields: Fields, attr: &str) -> Result<Vec<Expr>, ParsingError> {
             }
             cmp_fields.fold(Ok(vec![]), fold_token_errors)
         }
-        Fields::Unit => Ok(Vec::new()),
+        Fields::Unit => {
+            // println!("Parsed unit field");
+            Ok(Vec::new())
+        }
     }
 }

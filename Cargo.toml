@@ -3,7 +3,7 @@ name = "cmp_by_derive"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Derive macro CmpBy, deriving traits `Ord`, `PartialOrd`, `Eq`, `PartialEq` and `Hash` for structs and enums that can't automatically derive from those traits."
+description = "Derive macro CmpBy and HashBy, respectively deriving traits `Ord`, `PartialOrd`, `Eq` and `PartialEq`, and `Hash` for structs and enums that can't automatically derive from those traits."
 homepage = "https://github.com/tlaferriere/cmp_by_derive"
 documentation = "https://github.com/tlaferriere/cmp_by_derive/#readme"
 repository = "https://github.com/tlaferriere/cmp_by_derive"
@@ -22,3 +22,6 @@ quote = "1"
 [dev-dependencies]
 rust-format = "0.3"
 trybuild = {version = "1.0.80", features = ["diff"]}
+
+[build-dependencies]
+rustc_version = "0.4.0"

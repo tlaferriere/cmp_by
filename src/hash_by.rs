@@ -55,9 +55,9 @@ pub fn impl_hash_by_derive(input: DeriveInput) -> TokenStream {
             let mut hash_statements = sortable_variants
                 .iter()
                 .enumerate()
-                .filter(|(_, (_, sortable_expr))| sortable_expr.len() != 0)
+                .filter(|(_, (_, sortable_expr))| !sortable_expr.is_empty())
                 .map(|(i, (variant, sortable_expr))| {
-                    let hash_pattern = quote_spanned! {variant.span() => self @ #variant};
+                    let hash_pattern = quote_spanned! {variant.span() => this @ #variant};
                     let variant_num = Literal::usize_unsuffixed(i).to_token_stream();
                     let variant_hash_statement = quote! {state.write_u8(#variant_num)};
                     let hash_statement = sortable_expr
@@ -144,7 +144,7 @@ mod test {
         let input = syn::parse_quote! {
             #[hash_by(this, this.that, get_something(), something.do_this())]
             enum Toto {
-                A(u32),
+                A(#[hash_by] u32),
                 B,
                 G { doesnotmatter: String, anyway: usize }
             }
@@ -159,6 +159,12 @@ mod test {
         self.this.that.hash(state);
         self.get_something().hash(state);
         self.something.do_this().hash(state);
+        match self {
+            this @ Self::A(..) => {
+                state.write_u8(0);
+                self.0.hash(state)
+            }
+        }
     }
 }
 "#

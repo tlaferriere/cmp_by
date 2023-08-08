@@ -1,13 +1,12 @@
-[![GitHub](https://img.shields.io/badge/github-tlaferriere/cmp_by_derive-8da0cb?labelColor=555555&logo=github)](https://github.com/tlaferriere/cmp_by)
-[![Crates.io](https://img.shields.io/crates/v/cmp_by)](https://crates.io/crates/cmp_by)
-[![docs.rs](https://img.shields.io/docsrs/cmp_by)](https://docs.rs/cmp_by)
+[![GitHub](https://img.shields.io/badge/github-tlaferriere/cmp_by_derive-8da0cb?labelColor=555555&logo=github)](https://github.com/tlaferriere/cmp_by_derive)
+[![Crates.io](https://img.shields.io/crates/v/cmp_by_derive)](https://crates.io/crates/cmp_by_derive)
+[![docs.rs](https://img.shields.io/docsrs/cmp_by_derive)](https://docs.rs/cmp_by_derive)
 [![Continuous integration](https://github.com/tlaferriere/cmp_by_derive/actions/workflows/rust.yml/badge.svg)](https://github.com/tlaferriere/cmp_by_derive/actions/workflows/rust.yml)
-# cmp_by
+# cmp_by_derive
 
-This crate provides the `CmpBy` derive macro.
-- `CmpBy` derives the traits `Ord`, `PartialOrd`, `Eq` and `PartialEq` on types that can't automatically derive those traits because they contain unorderable fields such as `f32`.
-- `CmpBy` can also implement a `Ord` trait that calls arbitrary methods
-- `HashBy` 
+This crate provides the `CmpBy` and `HashBy` derive macros.
+- `CmpBy` derives the traits `Ord`, `PartialOrd`, `Eq` and `PartialEq` on types that can't automatically derive those traits because they contain unorderable fields such as `f32` by selecting fields to use in the comparison.
+- `CmpBy` and `HashBy` can also implement their traits by calling arbitrary methods
 
 
 ## Usage
@@ -62,4 +61,27 @@ assert_eq!(Something { a: 2, b: 0, c: 0.2 }.cmp(&Something { a: 1, b: 1, c: 1.3 
            SomethingElse { a: 2, b: 0, c: 0.2 }.cmp(&SomethingElse { a: 1, b: 1, c: 1.3 }));
 assert_eq!(Something { a: 1, b: 0, c: 3.3 }.cmp(&Something { a: 1, b: 1, c: 2.3 }),
            SomethingElse { a: 1, b: 0, c: 3.3 }.cmp(&SomethingElse { a: 1, b: 1, c: 2.3 }));
+```
+
+You can use `HashBy` the same way you would use `CmpBy`:
+
+```rust
+use cmp_by_derive::HashBy;
+use cmp_by_derive::CmpBy;
+use std::collections::hash_set::HashSet;
+
+#[derive(HashBy, CmpBy)]
+struct Something {
+    #[cmp_by]
+    #[hash_by]
+    a: u16,
+    #[cmp_by]
+    #[hash_by]
+    b: u16,
+    c: f32,
+}
+
+let mut set = HashSet::new();
+let something = Something { a: 2, b: 0, c: 0.2 };
+assert!(set.insert(something));
 ```

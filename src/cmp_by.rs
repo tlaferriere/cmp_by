@@ -1,10 +1,10 @@
 use crate::parsing::{parse_input, ParsedFields, ParsedInput, ParsingError};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, parse_quote_spanned, spanned::Spanned, DeriveInput, Error, Expr};
+use syn::{parse2, parse_quote_spanned, spanned::Spanned, DeriveInput, Error, Expr, Index};
 
 pub fn impl_cmp_by_derive(input: DeriveInput) -> TokenStream {
-    println!("Entered impl_cmp_by_derive");
+    // println!("Entered impl_cmp_by_derive");
     let input_span = input.span();
     let struct_name = input.ident.clone();
 
@@ -26,28 +26,50 @@ pub fn impl_cmp_by_derive(input: DeriveInput) -> TokenStream {
             .into_compile_error()
         }
     };
-    println!("Successfully parsed input");
+    // println!("Successfully parsed input");
 
     let field_ord_statement = match &sortable_fields {
         ParsedFields::Struct(sortable_expr) => gen_cmp_exprs(sortable_expr),
         ParsedFields::Enum(sortable_variants) => {
+            // dbg!(sortable_variants.len());
             let ord_statements = sortable_variants
                 .iter()
-                .filter(|(_, sortable_expr)| sortable_expr.len() != 0)
+                .filter(|(_, sortable_expr)| !sortable_expr.is_empty())
                 .map(|(variant, sortable_expr)| {
                     let ord_pattern =
-                        quote_spanned! {variant.span() => (#variant @ this, #variant @ other)};
+                        quote_spanned! {variant.span() => (this @ #variant, other @ #variant)};
                     let ord_statement = gen_cmp_exprs(sortable_expr);
                     quote! {#ord_pattern => #ord_statement}
                 });
-            // TODO: What do we compare when we have different variants?
+
+            let idx_statements =
+                sortable_variants
+                    .iter()
+                    .enumerate()
+                    .map(|(var_idx, (variant, _))| {
+                        let idx_statement = Index::from(var_idx);
+                        quote! {#variant => #idx_statement}
+                    });
+            let idx_statements = quote! {
+                #(#idx_statements,)*
+            };
+            // What do we compare when we have different variants? We compare the discriminant based on the order of variant declaration.
             // TODO: And what about variants that have no fields marked to cmp?
             let stream = quote_spanned! { input_span =>
                 match (self, other) {
                     #(#ord_statements,)*
-                    (_this, _other) => ::core::cmp::Ordering::Equal
+                    (this, other) => {
+                        match this {
+                            #idx_statements
+                        }.cmp(
+                            &match other {
+                                #idx_statements
+                            }
+                        )
+                    }
                 }
             };
+            // println!("{stream}");
             Some(match parse2(stream.clone()) {
                 Ok(ts) => ts,
                 Err(err) => {
@@ -57,9 +79,9 @@ pub fn impl_cmp_by_derive(input: DeriveInput) -> TokenStream {
             })
         }
     };
-    println!("Successfully generated field cmps");
+    // println!("Successfully generated field cmps");
 
-    println!("Entering gen_cmp_expr");
+    // println!("Entering gen_cmp_expr");
     let expr_ord_statements = sortable_expressions
         .iter()
         .map(|expr| {
@@ -79,7 +101,7 @@ pub fn impl_cmp_by_derive(input: DeriveInput) -> TokenStream {
                 #ord_expr.then_with(|| #expr)
             }
         });
-    println!("Successfully generated preceding expressions cmps");
+    // println!("Successfully generated preceding expressions cmps");
 
     let ord_expression = match (expr_ord_statements, field_ord_statement) {
         (Some(exprs), Some(fields)) => {
@@ -92,7 +114,7 @@ pub fn impl_cmp_by_derive(input: DeriveInput) -> TokenStream {
             unreachable!("Error of no fields to compare on should be handled in the parsing stage.")
         }
     };
-    println!("Successfully combined preceding expressions with fields cmps");
+    // println!("Successfully combined preceding expressions with fields cmps");
 
     let where_clause = &generics.where_clause;
     let generics_params = &generics_params;
@@ -124,7 +146,7 @@ pub fn impl_cmp_by_derive(input: DeriveInput) -> TokenStream {
 }
 
 fn gen_cmp_exprs(sortable_expr: &[Expr]) -> Option<Expr> {
-    println!("Entering gen_cmp_expr");
+    // println!("Entering gen_cmp_expr");
     sortable_expr
         .iter()
         .map(|expr| {
@@ -152,10 +174,10 @@ pub(crate) mod test {
             assert_eq!(
                 rust_fmt
                     .format_str($actual)
-                    .expect("Actual value could not be formatted :"),
+                    .expect("Actual value could not be formatted"),
                 rust_fmt
                     .format_str($expected)
-                    .expect("Expected value could not be formatted :"),
+                    .expect("Expected value could not be formatted"),
                 $($msg)?
             );
         };
@@ -241,8 +263,17 @@ impl ::core::cmp::Ord for Toto {
             .then_with(|| self.get_something().cmp(&other.get_something()))
             .then_with(|| self.something.do_this().cmp(&other.something.do_this()))
             .then_with(|| match (self, other) {
-                (A @ this, A @ other) => self.0.cmp(&other.0),
-                (_this, _other) => ::core::cmp::Ordering::Equal,
+                (this @ Self::A(..), other @ Self::A(..)) => self.0.cmp(&other.0),
+                (this, other) => match this {
+                    Self::A(..) => 0,
+                    Self::B => 1,
+                    Self::G { .. } => 2,
+                }
+                .cmp(&match other {
+                    Self::A(..) => 0,
+                    Self::B => 1,
+                    Self::G { .. } => 2,
+                }),
             })
     }
 }
@@ -254,7 +285,6 @@ impl ::core::cmp::Ord for Toto {
     fn test_singlecall() {
         let input = syn::parse_quote! {
             #[cmp_by(get_something())]
-            #[accessor(global_time: usize)]
             enum Toto {
                 A(u32),
                 B,
@@ -284,7 +314,16 @@ impl ::core::cmp::Ord for Toto {
         self.get_something()
             .cmp(&other.get_something())
             .then_with(|| match (self, other) {
-                (_this, _other) => ::core::cmp::Ordering::Equal,
+                (this, other) => match this {
+                    Self::A(..) => 0,
+                    Self::B => 1,
+                    Self::G { .. } => 2,
+                }
+                .cmp(&match other {
+                    Self::A(..) => 0,
+                    Self::B => 1,
+                    Self::G { .. } => 2,
+                }),
             })
     }
 }

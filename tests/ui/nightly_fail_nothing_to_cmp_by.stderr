@@ -1,0 +1,7 @@
+error: CmpBy: no field to compare on. Mark fields to compare on with #[cmp_by]
+ --> tests/ui/nightly_fail_nothing_to_cmp_by.rs:5:5
+  |
+5 | /     a: u32,
+6 | |     b: u64,
+7 | |     f: f64,
+  | |___________^
