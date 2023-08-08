@@ -10,6 +10,9 @@ repository = "https://github.com/tlaferriere/cmp_by_derive"
 keywords = ["derive", "comparing", "ordering", "no_std", "cmp"]
 categories = ["development-tools", "rust-patterns", "development-tools::procedural-macro-helpers", "no_std"]
 readme = "README.md"
+exclude = [
+    ".github/*",
+]
 
 [lib]
 proc-macro = true
