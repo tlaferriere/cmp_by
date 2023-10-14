@@ -1,3 +1,5 @@
+#![allow(clippy::manual_try_fold)]
+
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
@@ -147,7 +149,7 @@ impl Extend<Error> for ParsingError {
                 unreachable!("When there are no fields, it should never be extended.")
             }
             ParsingError::Error(err) => {
-                err.extend(iter.into_iter());
+                err.extend(iter);
             }
         }
     }
